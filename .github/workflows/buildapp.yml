@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       decrypted_youtube_url:
-        description: "Direct URL to the decrypted YouTube ipa. The version of YouTube will be detected automatically."
+        description: "Direct URL to the decrypted YouTube IPA. The version of YouTube will be detected automatically."
         default: ""
         required: true
         type: string
@@ -77,18 +77,15 @@ jobs:
       - name: Caching SDK
         id: SDK
         uses: actions/cache@v4
-        env:
-          cache-name: iOS-16.5-SDK
         with:
           path: theos/sdks/
-          key: ${{ env.cache-name }}
+          key: iOS-16.5-SDK-${{ runner.os }}
 
       - name: Download iOS 16.5 SDK
         if: steps.SDK.outputs.cache-hit != 'true'
         run: |
-          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git && cd sdks
-          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
-          git checkout
+          git clone --depth=1 https://github.com/theos/sdks.git
+          cd sdks
           mv *.sdk $THEOS/sdks
         env:
           THEOS: ${{ github.workspace }}/theos
@@ -110,8 +107,8 @@ jobs:
       - name: Prepare YouTube iPA
         id: prepare_youtube
         run: |
-          wget "$YOUTUBE_URL" --no-verbose -O main/YouTube.ipa
-          cd ${{ github.workspace }}/main
+          wget "$YOUTUBE_URL" -O main/YouTube.ipa
+          cd main
           mv YouTube.ipa YouTube.zip
           unzip -q YouTube.zip
           youtube_version=$(defaults read "$(pwd)/Payload/YouTube.app/Info" CFBundleVersion)
@@ -126,13 +123,11 @@ jobs:
         id: build_package
         run: |
           mkdir -p theos/lib/iphone/rootless
-          cd ${{ github.workspace }}/main
+          cd main
           sed -i '' "27s#.*#BUNDLE_ID = ${{ env.BUNDLE_ID }}#g" Makefile
           sed -i '' "26s#.*#DISPLAY_NAME = ${{ env.APP_NAME }}#g" Makefile          
           make package THEOS_PACKAGE_SCHEME=rootless IPA=Payload/YouTube.app FINALPACKAGE=1
           echo "package=$(ls -t packages | head -n1)" >>$GITHUB_OUTPUT
-          echo -e "==> \033[1mSHASUM256: $(shasum -a 256 packages/*.ipa | cut -f1 -d' ')\033[0m"
-          echo -e "==> \033[1mBundle ID: ${{ env.BUNDLE_ID }}\033[0m"
         env:
           THEOS: ${{ github.workspace }}/theos
           UYOU_VERSION: ${{ inputs.uyou_version }}
@@ -142,12 +137,9 @@ jobs:
       - name: Upload Artifact
         if: ${{ inputs.upload_artifact }}
         uses: actions/upload-artifact@v4
-        env:
-          UYOU_VERSION: ${{ inputs.uyou_version }}
-          YOUTUBE_VERSION: ${{ steps.prepare_youtube.outputs.youtube_version }}
         with:
-          name: uYouPlus_${{ env.YOUTUBE_VERSION }}_${{ env.UYOU_VERSION }}
-          path: ${{ github.workspace }}/main/packages/${{ steps.build_package.outputs.package }}
+          name: uYouPlus_${{ steps.prepare_youtube.outputs.youtube_version }}_${{ inputs.uyou_version }}
+          path: main/packages/${{ steps.build_package.outputs.package }}
           if-no-files-found: error
 
       - name: Create Release
